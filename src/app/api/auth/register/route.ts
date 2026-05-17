@@ -5,6 +5,7 @@ import { hashPassword } from "@/lib/auth/password";
 import { createSession } from "@/lib/auth/session";
 import { recordActivity } from "@/lib/admin/audit";
 import { handleError, ok, err } from "@/lib/api";
+import { clientIp, rateLimit } from "@/lib/rate-limit";
 
 const schema = z.object({
   email: z.string().email(),
@@ -17,8 +18,23 @@ const schema = z.object({
   displayName: z.string().max(64).optional(),
 });
 
+// 5 new-account creations per IP per hour. Higher than a human needs, low
+// enough to make scripted spam expensive.
+const LIMIT = 5;
+const WINDOW_MS = 60 * 60 * 1000;
+
 export async function POST(req: NextRequest) {
   try {
+    const ip = clientIp(req.headers);
+    const limit = rateLimit(`register:${ip}`, LIMIT, WINDOW_MS);
+    if (!limit.ok) {
+      return err(
+        `Too many sign-ups from this address. Try again in ${limit.retryAfterSeconds}s.`,
+        429,
+        "RATE_LIMITED",
+      );
+    }
+
     const body = await req.json();
     const data = schema.parse(body);
 

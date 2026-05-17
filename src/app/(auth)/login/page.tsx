@@ -24,6 +24,15 @@ function LoginForm() {
   const [password, setPassword] = React.useState("");
   const [loading, setLoading] = React.useState(false);
 
+  // Detect which site we're on so we can route to the appropriate default
+  // landing page after sign-in. Computed in useEffect to keep this a pure
+  // client decision — no SSR mismatch.
+  const [isAdminSite, setIsAdminSite] = React.useState(false);
+  React.useEffect(() => {
+    if (typeof window === "undefined") return;
+    setIsAdminSite(window.location.host.split(".")[0]!.toLowerCase() === "admin");
+  }, []);
+
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
@@ -36,7 +45,13 @@ function LoginForm() {
     setLoading(false);
     if (j.ok) {
       toast.success("Welcome back");
-      router.push(params.get("next") || "/chart");
+      const next = params.get("next");
+      const role = j.data?.role as string | undefined;
+      // Default landing: admin → /admin (its middleware allows it), user → /chart.
+      // If the user signed in on the admin host but isn't an ADMIN, the admin
+      // layout will cross-host redirect them to the user app automatically.
+      const defaultPath = isAdminSite || role === "ADMIN" ? "/admin" : "/chart";
+      router.push(next || defaultPath);
       router.refresh();
     } else {
       toast.error(j.error?.message ?? "Login failed");

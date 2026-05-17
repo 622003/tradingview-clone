@@ -1,0 +1,14 @@
+.git
+.next
+node_modules
+npm-debug.log
+.env
+.env.local
+.env.*.local
+*.md
+!README.md
+!CLAUDE.md
+test-artifacts
+prisma/dev.db
+prisma/dev.db-journal
+.agents
