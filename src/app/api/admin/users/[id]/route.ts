@@ -38,8 +38,8 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
   try {
     const admin = await requireAdmin();
+    const body = patch.parse(await req.json());
     if (params.id === admin.id) {
-      const body = patch.parse(await req.json());
       if (body.role && body.role !== "ADMIN") {
         return err("You cannot demote yourself", 400);
       }
@@ -47,7 +47,6 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
         return err("You cannot suspend or ban yourself", 400);
       }
     }
-    const body = patch.parse(await req.json());
     const before = await prisma.user.findUnique({ where: { id: params.id } });
     if (!before) return err("User not found", 404);
     const updated = await prisma.user.update({

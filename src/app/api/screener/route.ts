@@ -20,10 +20,12 @@ export async function GET(req: NextRequest) {
     const url = new URL(req.url);
     const type = url.searchParams.get("type") ?? undefined;
     const exchange = url.searchParams.get("exchange") ?? undefined;
-    const minPct = Number(url.searchParams.get("minPct") ?? "");
-    const maxPct = Number(url.searchParams.get("maxPct") ?? "");
-    const minPrice = Number(url.searchParams.get("minPrice") ?? "");
-    const maxPrice = Number(url.searchParams.get("maxPrice") ?? "");
+    const numParam = (key: string) =>
+      url.searchParams.has(key) ? Number(url.searchParams.get(key)) : NaN;
+    const minPct = numParam("minPct");
+    const maxPct = numParam("maxPct");
+    const minPrice = numParam("minPrice");
+    const maxPrice = numParam("maxPrice");
 
     const where: Record<string, unknown> = {};
     if (type) where.type = type;

@@ -32,13 +32,14 @@ tour and contribution guide.
 ### Auth & accounts
 - Custom session-based auth (no NextAuth dependency) backed by HTTP-only cookies and
   `bcryptjs`-hashed passwords.
-- Three demo accounts seeded for you:
+- Three demo accounts seeded for you. The login form accepts **either the
+  username or the email**:
 
-  | Username | Password    | Role  |
-  | -------- | ----------- | ----- |
-  | `admin`  | `admin1234` | ADMIN |
-  | `pro`    | `pro1234`   | PRO   |
-  | `trader` | `user1234`  | USER  |
+  | Username | Email                          | Password    | Role  |
+  | -------- | ------------------------------ | ----------- | ----- |
+  | `admin`  | `admin@tradingclone.local`     | `admin1234` | ADMIN |
+  | `pro`    | `pro@tradingclone.local`       | `pro1234`   | PRO   |
+  | `trader` | `trader@tradingclone.local`    | `user1234`  | USER  |
 
 - Per-user feature limits and flags: `maxAlerts`, `maxWatchlists`, `canPostIdeas`,
   `canUseScreener`, `canExportData`.
@@ -83,7 +84,7 @@ npm run dev
 # -> http://localhost:3000
 ```
 
-Sign in as **`admin` / `admin1234`** to access `/admin`.
+Sign in as **`admin` / `admin1234`** (or `admin@tradingclone.local`) to access `/admin`.
 
 ### npm scripts
 ```bash

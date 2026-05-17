@@ -12,6 +12,10 @@ export function handleError(e: unknown) {
   const msg = e instanceof Error ? e.message : "Unknown error";
   if (msg === "UNAUTHORIZED") return err("Authentication required", 401, "UNAUTHORIZED");
   if (msg === "FORBIDDEN") return err("Forbidden", 403, "FORBIDDEN");
+  // Zod validation errors carry user-safe field info; surface them.
+  if (e instanceof Error && e.name === "ZodError") {
+    return err(msg, 400, "VALIDATION_ERROR");
+  }
   console.error("[api] error:", e);
-  return err(msg, 500);
+  return err("Internal server error", 500, "INTERNAL_ERROR");
 }

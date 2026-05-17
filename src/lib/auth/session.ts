@@ -51,7 +51,7 @@ export async function getCurrentUser() {
     await prisma.session.delete({ where: { id: session.id } }).catch(() => {});
     return null;
   }
-  if (session.user.status === "BANNED") return null;
+  if (session.user.status === "BANNED" || session.user.status === "SUSPENDED") return null;
   return session.user;
 }
 
