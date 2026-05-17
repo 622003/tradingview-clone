@@ -1,6 +1,7 @@
 import { cookies, headers } from "next/headers";
 import { randomBytes } from "crypto";
 import { prisma } from "@/lib/prisma";
+import { env } from "@/lib/env";
 
 export const SESSION_COOKIE = "tv_session";
 const SESSION_TTL_DAYS = 30;
@@ -20,12 +21,17 @@ export async function createSession(userId: string) {
     data: { userId, token, userAgent: ua, ipAddress: ip ?? undefined, expiresAt },
   });
 
+  // `domain` is what lets the cookie cover both the user and admin hosts.
+  // Skip it if the parent domain is empty (single-host deploys).
+  const domain = env.COOKIE_DOMAIN || undefined;
+
   cookies().set(SESSION_COOKIE, token, {
     httpOnly: true,
     sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
+    secure: env.NODE_ENV === "production",
     expires: expiresAt,
     path: "/",
+    domain,
   });
 
   return token;
@@ -36,7 +42,10 @@ export async function destroyCurrentSession() {
   if (token) {
     await prisma.session.deleteMany({ where: { token } }).catch(() => {});
   }
-  cookies().delete(SESSION_COOKIE);
+  // Match the `domain` used on creation, otherwise the browser keeps the old
+  // parent-domain cookie around.
+  const domain = env.COOKIE_DOMAIN || undefined;
+  cookies().set(SESSION_COOKIE, "", { expires: new Date(0), path: "/", domain });
 }
 
 export async function getCurrentUser() {

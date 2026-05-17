@@ -1,8 +1,14 @@
 # TradeView — TradingView-style full-stack clone
 
 An open-source TradingView clone built with **Next.js 14 (App Router), TypeScript, Prisma + SQLite,
-Tailwind CSS and `lightweight-charts`**. Ships with a complete **admin panel** for managing users,
-roles, permissions, symbols, ideas, news and global feature flags.
+Tailwind CSS and `lightweight-charts`**. Ships as **two distinct websites from one codebase**:
+
+- **User site** — chart, watchlist, alerts, ideas, screener, news.
+- **Admin site** — user management, symbol catalog, idea moderation, audit log, feature flags.
+
+The two sites are served from different hostnames (e.g. `app.example.com` and
+`admin.example.com`), share a single database and session cookie, and are routed
+apart by `src/middleware.ts`. Same deployment, two products.
 
 The project is intentionally structured so you can drop into [Claude Code](https://www.anthropic.com/claude-code)
 or any other coding agent and continue building. See [`CLAUDE.md`](./CLAUDE.md) for an architecture
@@ -72,7 +78,7 @@ tour and contribution guide.
 # 1) Install deps
 npm install
 
-# 2) Copy env (defaults work locally)
+# 2) Copy env (defaults work locally on app.lvh.me / admin.lvh.me)
 cp .env.example .env
 
 # 3) Create the DB + apply migrations + seed demo data
@@ -81,10 +87,20 @@ npx prisma db seed
 
 # 4) Run the dev server
 npm run dev
-# -> http://localhost:3000
 ```
 
-Sign in as **`admin` / `admin1234`** (or `admin@tradingclone.local`) to access `/admin`.
+Then open:
+
+- **User site:**  http://app.lvh.me:3000
+- **Admin site:** http://admin.lvh.me:3000 (sign in as `admin` / `admin1234`)
+
+> `lvh.me` is a public DNS service that resolves `*.lvh.me` → `127.0.0.1`. You
+> don't need to edit `/etc/hosts`, install anything, or run a reverse proxy in
+> development — it just works.
+
+If you sign in on one site, the session cookie is scoped to `.lvh.me` so the
+other site is signed in too. Non-admin users that land on `admin.lvh.me:3000`
+get redirected back to the user site automatically.
 
 ### npm scripts
 ```bash
@@ -137,6 +153,26 @@ next steps if you want to extend the project.
 
 ---
 
+## How the two-site split works
+
+| Concern        | Where it lives                                            |
+| -------------- | --------------------------------------------------------- |
+| Host detection | `src/middleware.ts` reads the `Host` header               |
+| Env vars       | `USER_HOST`, `ADMIN_HOST`, `COOKIE_DOMAIN` (`src/lib/env.ts`) |
+| URL building   | `userSiteUrl()` / `adminSiteUrl()` in `src/lib/hosts.ts`  |
+| Shared cookie  | `src/lib/auth/session.ts` sets `domain = COOKIE_DOMAIN`   |
+| UI shell       | `AppShell` takes a `site="user" | "admin"` prop           |
+
+On the **admin host** the middleware only allows `/admin/**`, `/login`, `/api/auth/**`,
+and `/api/health`. Any other URL 302s to the user host. On the **user host** any
+`/admin/**` URL 302s to the admin host. This means accidental links always end up
+on the right product.
+
+`src/app/admin/layout.tsx` additionally bounces signed-in non-admin users back to
+the user site, so the admin host is genuinely admin-only.
+
+---
+
 ## Switching to Postgres
 
 In `prisma/schema.prisma`, change the datasource:
@@ -154,6 +190,73 @@ Then re-run the migration:
 DATABASE_URL="postgresql://user:pass@host:5432/tradeview" \
   npx prisma migrate dev --name init && npx prisma db seed
 ```
+
+---
+
+## Production deployment
+
+### Option A — Docker Compose (single VPS)
+
+The repo ships with a complete two-host stack: Postgres + Next.js + Caddy
+reverse proxy.
+
+```bash
+# Switch Prisma to Postgres first (one-time, see "Switching to Postgres" above).
+docker compose up --build -d
+```
+
+Then open:
+
+- http://app.localhost
+- http://admin.localhost
+
+For real domains, edit `Caddyfile`:
+
+```caddy
+app.example.com {
+  reverse_proxy web:3000
+}
+
+admin.example.com {
+  reverse_proxy web:3000
+}
+```
+
+…and remove the `auto_https off` block. Caddy will obtain Let's Encrypt
+certificates automatically on first request.
+
+Set these env vars on the `web` service:
+
+```yaml
+USER_HOST: app.example.com
+ADMIN_HOST: admin.example.com
+COOKIE_DOMAIN: .example.com
+DATABASE_URL: postgresql://...
+SESSION_SECRET: <openssl rand -hex 32>
+NODE_ENV: production
+```
+
+### Option B — Vercel / Railway / Fly.io
+
+1. Deploy a single Next.js instance.
+2. Add two custom domains pointing at the same deployment (e.g.
+   `app.example.com` and `admin.example.com`).
+3. Set env vars: `USER_HOST`, `ADMIN_HOST`, `COOKIE_DOMAIN`, `DATABASE_URL`,
+   `SESSION_SECRET`, `NODE_ENV=production`.
+4. Run `npx prisma migrate deploy` on every release (most platforms support a
+   post-deploy hook for this; Vercel users can wire it as a build step).
+5. Hit `GET /api/health` from your monitoring — it returns 200 when the DB is
+   reachable and 503 otherwise.
+
+### Health checks & rate limits
+
+- `GET /api/health` — liveness probe. Returns `{ ok: true, status: "healthy" }`
+  when Prisma can reach the DB.
+- `/api/auth/login` is rate-limited to **10 requests / 5 min / IP**.
+- `/api/auth/register` is rate-limited to **5 requests / hour / IP**.
+
+The limiter is in-process (`src/lib/rate-limit.ts`) and resets on restart.
+Swap it for Redis if you run multiple instances.
 
 ---
 

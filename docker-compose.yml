@@ -1,0 +1,72 @@
+# Local two-host stack:
+#
+#   ┌──────────┐    :80    ┌────────────┐
+#   │  caddy   │ ────────▶ │   web      │
+#   │ (proxy)  │           │ (Next.js)  │
+#   └──────────┘           └─────┬──────┘
+#                                │
+#                          ┌─────▼──────┐
+#                          │ postgres   │
+#                          └────────────┘
+#
+# After `docker compose up`:
+#   http://app.localhost     → user site
+#   http://admin.localhost   → admin site
+#   http://localhost:5432    → Postgres (for psql / GUI clients)
+#
+# The web container reads USER_HOST and ADMIN_HOST so middleware can route
+# correctly when Caddy forwards the original `Host` header.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: tradeview
+      POSTGRES_PASSWORD: tradeview
+      POSTGRES_DB: tradeview
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tradeview -d tradeview"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  web:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://tradeview:tradeview@postgres:5432/tradeview?schema=public
+      USER_HOST: app.localhost
+      ADMIN_HOST: admin.localhost
+      COOKIE_DOMAIN: .localhost
+      NODE_ENV: production
+      SESSION_SECRET: ${SESSION_SECRET:-dev-only-change-me-in-prod}
+    # Run migrations on startup so a fresh stack is immediately usable. Switch
+    # the Prisma provider to "postgresql" before building if you use this.
+    command: sh -c "npx prisma migrate deploy && node server.js"
+    expose:
+      - "3000"
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on:
+      - web
+    ports:
+      - "80:80"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+
+volumes:
+  postgres-data:
+  caddy-data:
+  caddy-config:

@@ -5,6 +5,7 @@ export default async function PublicLayout({ children }: { children: React.React
   const user = await getCurrentUser();
   return (
     <AppShell
+      site="user"
       user={user ? { id: user.id, username: user.username, displayName: user.displayName, role: user.role } : null}
     >
       {children}

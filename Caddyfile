@@ -1,0 +1,22 @@
+# Caddy reverse proxy for the two-host local stack.
+#
+# Forwards both hostnames to the single Next.js container — the app's
+# middleware reads the `Host` header to decide whether to serve the user or
+# admin site. We disable Caddy's auto-HTTPS for these *.localhost names so the
+# stack works on a fresh machine without trusting Caddy's local CA.
+#
+# For production, drop these blocks in favour of `app.your-domain.com` and
+# `admin.your-domain.com` — Caddy will then automatically obtain Let's Encrypt
+# certificates.
+
+{
+  auto_https off
+}
+
+http://app.localhost {
+  reverse_proxy web:3000
+}
+
+http://admin.localhost {
+  reverse_proxy web:3000
+}
