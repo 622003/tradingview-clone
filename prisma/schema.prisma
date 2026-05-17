@@ -1,0 +1,278 @@
+// TradingView Clone — Prisma schema
+// Uses SQLite for local dev. To switch to Postgres in production, change the
+// datasource `provider` to "postgresql" and update DATABASE_URL.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// -----------------------------------------------------------------------------
+// Users & auth
+// -----------------------------------------------------------------------------
+
+model User {
+  id            String     @id @default(cuid())
+  email         String     @unique
+  username      String     @unique
+  passwordHash  String
+  displayName   String?
+  avatarUrl     String?
+  role          String     @default("USER") // USER | PRO | ADMIN
+  status        String     @default("ACTIVE") // ACTIVE | SUSPENDED | BANNED
+  bio           String?
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+  lastLoginAt   DateTime?
+
+  // feature flags / limits controlled by admin
+  maxAlerts        Int     @default(10)
+  maxWatchlists    Int     @default(3)
+  canPostIdeas     Boolean @default(true)
+  canUseScreener   Boolean @default(true)
+  canExportData    Boolean @default(false)
+
+  sessions      Session[]
+  watchlists    Watchlist[]
+  alerts        Alert[]
+  ideas         Idea[]
+  ideaLikes     IdeaLike[]
+  ideaComments  IdeaComment[]
+  activities    ActivityLog[]
+  auditActions  AuditLog[]  @relation("AdminActor")
+  auditTargets  AuditLog[]  @relation("AdminTarget")
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  userId       String
+  token        String   @unique
+  userAgent    String?
+  ipAddress    String?
+  createdAt    DateTime @default(now())
+  expiresAt    DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+// -----------------------------------------------------------------------------
+// Market data
+// -----------------------------------------------------------------------------
+
+model Symbol {
+  id          String   @id @default(cuid())
+  ticker      String   @unique
+  name        String
+  exchange    String
+  type        String   // stock | crypto | forex | index | commodity
+  sector      String?
+  industry    String?
+  country     String?
+  description String?
+  logoUrl     String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  candles        Candle[]
+  watchlistItems WatchlistItem[]
+  alerts         Alert[]
+  ideas          Idea[]
+  newsItems      NewsItem[]
+
+  @@index([exchange])
+  @@index([type])
+}
+
+model Candle {
+  id        String   @id @default(cuid())
+  symbolId  String
+  time      DateTime
+  open      Float
+  high      Float
+  low       Float
+  close     Float
+  volume    Float
+  interval  String // 1m | 5m | 15m | 1h | 4h | 1d | 1w | 1M
+
+  symbol    Symbol   @relation(fields: [symbolId], references: [id], onDelete: Cascade)
+
+  @@unique([symbolId, interval, time])
+  @@index([symbolId, interval])
+}
+
+// -----------------------------------------------------------------------------
+// Watchlists
+// -----------------------------------------------------------------------------
+
+model Watchlist {
+  id        String   @id @default(cuid())
+  userId    String
+  name      String
+  isDefault Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items     WatchlistItem[]
+
+  @@index([userId])
+}
+
+model WatchlistItem {
+  id           String    @id @default(cuid())
+  watchlistId  String
+  symbolId     String
+  position     Int       @default(0)
+  createdAt    DateTime  @default(now())
+
+  watchlist    Watchlist @relation(fields: [watchlistId], references: [id], onDelete: Cascade)
+  symbol       Symbol    @relation(fields: [symbolId], references: [id], onDelete: Cascade)
+
+  @@unique([watchlistId, symbolId])
+  @@index([watchlistId])
+}
+
+// -----------------------------------------------------------------------------
+// Alerts
+// -----------------------------------------------------------------------------
+
+model Alert {
+  id          String   @id @default(cuid())
+  userId      String
+  symbolId    String
+  condition   String   // PRICE_ABOVE | PRICE_BELOW | PCT_CHANGE | VOLUME_ABOVE
+  value       Float
+  status      String   @default("active") // active | triggered | disabled
+  message     String?
+  createdAt   DateTime @default(now())
+  triggeredAt DateTime?
+
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  symbol      Symbol   @relation(fields: [symbolId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([symbolId])
+}
+
+// -----------------------------------------------------------------------------
+// Social: Ideas / News
+// -----------------------------------------------------------------------------
+
+model Idea {
+  id        String   @id @default(cuid())
+  userId    String
+  symbolId  String?
+  title     String
+  content   String
+  bias      String   @default("neutral") // long | short | neutral | educational
+  target    Float?
+  stop      Float?
+  imageUrl  String?
+  isPublic  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user      User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  symbol    Symbol?        @relation(fields: [symbolId], references: [id], onDelete: SetNull)
+  likes     IdeaLike[]
+  comments  IdeaComment[]
+
+  @@index([userId])
+  @@index([symbolId])
+}
+
+model IdeaLike {
+  id        String   @id @default(cuid())
+  userId    String
+  ideaId    String
+  createdAt DateTime @default(now())
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  idea      Idea     @relation(fields: [ideaId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, ideaId])
+}
+
+model IdeaComment {
+  id        String   @id @default(cuid())
+  userId    String
+  ideaId    String
+  content   String
+  createdAt DateTime @default(now())
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  idea      Idea     @relation(fields: [ideaId], references: [id], onDelete: Cascade)
+
+  @@index([ideaId])
+}
+
+model NewsItem {
+  id          String   @id @default(cuid())
+  symbolId    String?
+  title       String
+  summary     String
+  url         String?
+  source      String
+  publishedAt DateTime
+  imageUrl    String?
+  createdAt   DateTime @default(now())
+
+  symbol      Symbol?  @relation(fields: [symbolId], references: [id], onDelete: SetNull)
+
+  @@index([symbolId])
+  @@index([publishedAt])
+}
+
+// -----------------------------------------------------------------------------
+// Admin / audit
+// -----------------------------------------------------------------------------
+
+model ActivityLog {
+  id        String   @id @default(cuid())
+  userId    String
+  action    String
+  metadata  String?
+  ipAddress String?
+  createdAt DateTime @default(now())
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([createdAt])
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  actorId   String
+  targetId  String?
+  action    String
+  details   String?
+  createdAt DateTime @default(now())
+
+  actor     User     @relation("AdminActor", fields: [actorId], references: [id], onDelete: Cascade)
+  target    User?    @relation("AdminTarget", fields: [targetId], references: [id], onDelete: SetNull)
+
+  @@index([actorId])
+  @@index([targetId])
+  @@index([createdAt])
+}
+
+model FeatureFlag {
+  id          String   @id @default(cuid())
+  key         String   @unique
+  enabled     Boolean  @default(true)
+  description String?
+  updatedAt   DateTime @updatedAt
+}
+
+model AppSetting {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  value     String
+  updatedAt DateTime @updatedAt
+}
